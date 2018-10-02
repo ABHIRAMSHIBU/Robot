@@ -1,6 +1,25 @@
 #define DEBUG true
 #define VERSION 1.0
-#include<TimerOne.h>
+#include <TimerOne.h>          // Interrupt handler ( Atmega Timer 1 )
+#include <Wire.h>              // For I2C communication (LCD)
+#include <LiquidCrystal_I2C.h> // For LCD
+/* Pin Declarations */
+#define BRIDGE_LEFT_A       2
+#define BRIDGE_LEFT_B       3
+#define BRIDGE_RIGHT_A      4
+#define BRIDGE_RIGHT_B      5
+#define ir_right            8
+#define ir_left             9
+#define trigger             10
+#define echo                12
+#define ldrPin              14
+/* END Pin Declarations */
+
+/* Global Declarations */
+#define BAUDRATE            9600
+#define ultrasonicThreshold 15
+#define interruptTimeMillis 150000
+/* END Global Declarations */
 
 /* Robot Classes */
 class Bridge{
@@ -16,65 +35,61 @@ class Bridge{
             B=0;
        }
 };
-Bridge left(2,3),right(4,5);
+Bridge leftBridge(BRIDGE_LEFT_A,BRIDGE_LEFT_B),rightBridge(BRIDGE_RIGHT_A,BRIDGE_LEFT_B);
 class Robot{
     public: 
-            Bridge left,right;
+            Bridge leftBridge,rightBridge;
             Robot(Bridge a,Bridge b){
-            left=a;
-            right=b;
+            leftBridge=a;
+            rightBridge=b;
          }
         void go_forward(){
-            digitalWrite(left.A,1);
-            digitalWrite(left.B,0);
-            digitalWrite(right.A,1);
-            digitalWrite(right.B,0);
+            digitalWrite(leftBridge.A,1);
+            digitalWrite(leftBridge.B,0);
+            digitalWrite(rightBridge.A,1);
+            digitalWrite(rightBridge.B,0);
         }
         void go_backward(){
-            digitalWrite(left.A,0);
-            digitalWrite(left.B,1);
-            digitalWrite(right.A,0);
-            digitalWrite(right.B,1);
+            digitalWrite(leftBridge.A,0);
+            digitalWrite(leftBridge.B,1);
+            digitalWrite(rightBridge.A,0);
+            digitalWrite(rightBridge.B,1);
         }
         void stop(){
-            digitalWrite(left.A,0);
-            digitalWrite(left.B,0);
-            digitalWrite(right.A,0);
-            digitalWrite(right.B,0);
+            digitalWrite(leftBridge.A,0);
+            digitalWrite(leftBridge.B,0);
+            digitalWrite(rightBridge.A,0);
+            digitalWrite(rightBridge.B,0);
         }
         void go_left(){
-            digitalWrite(right.A,0);    //c1 right c2//left
-            digitalWrite(right.B,1);
-            digitalWrite(left.A,1);
-            digitalWrite(left.B,0);
+            digitalWrite(rightBridge.A,0);    //c1 right c2//left
+            digitalWrite(rightBridge.B,1);
+            digitalWrite(leftBridge.A,1);
+            digitalWrite(leftBridge.B,0);
         }
         void go_right(){
-            digitalWrite(right.A,1);    //c1 right c2//left
-            digitalWrite(right.B,0);
-            digitalWrite(left.A,0);
-            digitalWrite(left.B,1);
+            digitalWrite(rightBridge.A,1);    //c1 right c2//left
+            digitalWrite(rightBridge.B,0);
+            digitalWrite(leftBridge.A,0);
+            digitalWrite(leftBridge.B,1);
         }
 };
 /* END Robot Class */
 
 
 /* Global Variables */
-static int BAUDRATE=9600;
-bool switch1=false;
-long int time1=millis(); 
-bool override=false;
-Robot car(left,right);
-static int ir_left=9,ir_right=8;
-int distance=100;
-bool irLeft, irRight;
-static int ultrasonicThreshold=15;
-static int trigger =10; 
-static int echo = 12;
-static int interruptTimeMillis=150000;
-bool interruptSwitch;
-int counter=0;
+Robot car(leftBridge,rightBridge);
+LiquidCrystal_I2C	lcd(0x27,2,1,0,4,5,6,7);
+long int time1=millis();   // Time Keeper ONE
+bool override=true;        // Manual Override
+int distance=100;          // Ultrasonic distance
+bool irLeft, irRight;      // IR DATA
+bool interruptSwitch;      // ISR ENABLE / DISABLE car
+int counter=0;             // Ultrasonic Burst counter
 bool ultrasonicBack=false; // Ultrasonic is going back.
-long int timer2;
+long int timer2;           // Time Keeper TWO
+int ldrData=1024;          // LDR DATA
+bool ldrOK=false;          // LDR Light detect = 1
 /* END Global Variables */
 
 void customISR(){
@@ -87,10 +102,13 @@ void debugInterrupt(){
 
 /* Main Setup Function */
 void setup() {
-    pinMode(left.A,OUTPUT);
-    pinMode(left.B,OUTPUT);
-    pinMode(right.A,OUTPUT);
-    pinMode(right.B,OUTPUT);
+    lcd.begin (16,2); // for 16 x 2 LCD module
+    lcd.setBacklightPin(3,POSITIVE);
+    lcd.setBacklight(HIGH);
+    pinMode(leftBridge.A,OUTPUT);
+    pinMode(leftBridge.B,OUTPUT);
+    pinMode(rightBridge.A,OUTPUT);
+    pinMode(rightBridge.B,OUTPUT);
     pinMode(13,1);
     Serial.begin(BAUDRATE);
     Timer1.initialize(interruptTimeMillis);
@@ -116,14 +134,21 @@ void ultrasonic_distance(){
     printDebug("Counter:"+String(counter));
 }
 
-void LDR(){
-    int value_read=analogRead(A0);
+void LDRData(){
+    ldrData=analogRead(ldrPin);
 }
-
+void LDR(){
+    if(ldrData>500){
+        ldrOK=true;
+    }
+    else{
+        ldrOK=false;
+    }
+}
 /* Debug Function */
 void debugStart(){
     if(DEBUG)
-        Serial.print("Debug: ");
+        Serial.print(F("Debug: "));
 }
 void printDebug(String data){
     if(DEBUG){
@@ -159,8 +184,9 @@ void IR(){  car.go_forward();
     printDebug("PROXIMITY DATA: LEFT "+String(irLeft)+" RIGHT "+String(irRight));
 }
 
-/* Line follower function */
-void lineFollower(){
+/* Line follower function new */
+
+void lineFollowerNew(){
     //Line follower has to link all boolean variables togather
     /*
      * Pending work...
@@ -169,26 +195,42 @@ void lineFollower(){
      * 3) Panic button is needed to stop this robot...
      * 4) Interrupt is there, we have to co-work it with all the other variables.
      */
+    if(override){
+        return;
+    }
+    if(interruptSwitch){
+        car.stop();
+        IR();
+        return;
+    }
+    if(ultrasonicBack){
+        car.go_backward();
+        return;
+    }
     digitalWrite(13,digitalRead(ir_left));
     if(irLeft) {
         car.go_left();
-        printDebug(String("LF:IR_L E"));
+        printDebug(String(F("LF:IR_L E")));
    }
    else{
      car.go_forward();     
-     printDebug(String("LF:IR_L D"));
+     printDebug(String(F("LF:IR_L D")));
    }
    if(irRight){
      car.go_right();
-     printDebug(String("LR:IR_R E"));
+     printDebug(String(F("LR:IR_R E")));
    }
    else {
      car.go_forward();
-     printDebug(String("LR:IR_R D"));
+     printDebug(String(F("LR:IR_R D")));
    }
 }
-/* END Line Foller Function */
+/* END Line Follower Function new */
 
+void LCD(){
+    lcd.home();
+    lcd.print(F("Hello World!"));
+}
 /* Command Processor */
 void commandProcessor(){ // Manual Override
     if(Serial.available()){
@@ -226,10 +268,11 @@ void loop(){
     commandProcessor();
     interrupts();
     IR();
-    lineFollower();
+    LDRData();
     LDR();
     ultrasonic_distance();
     ultrasonic();
+    lineFollowerNew();
     noInterrupts();
     debugInterrupt();
     debugEnd();
