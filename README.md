@@ -4,7 +4,7 @@ This is a robot with wheels, which is now a line follower, but can be expanded t
 <h1> Install Instructions </h1>
 <hr>
 <ol>
-<li>To install, clone <a href="https://github.com/ABHIRAMSHIBU/Robot/edit/master">this repository</a> to /home/user/Arduino/Robot </li>
+<li>To install, clone <a href="https://github.com/ABHIRAMSHIBU/Robot">this repository</a> to /home/user/Arduino/Robot </li>
   <li>Open Arduino IDE</li>
   <li>Open Robot from sketchbook</li>
   </ol>
