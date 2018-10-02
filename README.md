@@ -7,6 +7,7 @@ This is a robot with wheels, which is now a line follower, but can be expanded t
 <li>To install, clone <a href="https://github.com/ABHIRAMSHIBU/Robot">this repository</a> to /home/user/Arduino/Robot </li>
   <li>Open Arduino IDE</li>
   <li>Open Robot from sketchbook</li>
+  <li>Download <a href="https://bitbucket.org/fmalpartida/new-liquidcrystal/downloads/">Module</a></li> 
   </ol>
   <hr>
   <h1>Features</h1>
